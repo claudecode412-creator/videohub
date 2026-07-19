@@ -1,8 +1,10 @@
 package com.example.videohub.controller;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.core.io.UrlResource;
 import org.springframework.core.io.support.ResourceRegion;
@@ -148,6 +150,16 @@ public class VideoController {
             @RequestHeader HttpHeaders headers) throws IOException {
 
         Video video = find(id);
+
+        // When videos live in R2, hand the browser a redirect to the public R2
+        // URL so R2 streams the bytes directly (byte-range support, no egress cost).
+        Optional<String> redirect = storage.redirectUrl(video.getStoredFilename());
+        if (redirect.isPresent()) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(redirect.get()))
+                    .build();
+        }
+
         UrlResource resource = storage.loadAsResource(video.getStoredFilename());
         long contentLength = resource.contentLength();
 
