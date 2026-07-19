@@ -367,6 +367,35 @@ pageSizeSelect.addEventListener('change', (e) => {
     loadPage(0, { scroll: true });
 });
 
+/* ============================================================
+   Header auth state — shows Log in / Sign up, or the user + Log out
+   ============================================================ */
+async function renderAuth() {
+    const box = $('#navAuth');
+    if (!box) return;
+    try {
+        const res = await fetch('/api/auth/me');
+        box.innerHTML = '';
+        if (res.ok) {
+            const u = await res.json();
+            const hi = el('span', 'nav-user');
+            hi.textContent = u.displayName || u.email;
+            const out = el('button', 'btn btn-ghost');
+            out.textContent = 'Log out';
+            out.addEventListener('click', async () => {
+                try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
+                renderAuth();
+            });
+            box.append(hi, out);
+        } else {
+            const login = el('a', 'btn btn-ghost'); login.href = '/login'; login.textContent = 'Log in';
+            const signup = el('a', 'btn btn-primary'); signup.href = '/signup'; signup.textContent = 'Sign up';
+            box.append(login, signup);
+        }
+    } catch { /* header auth is non-critical */ }
+}
+
 /* ---------- boot ---------- */
+renderAuth();
 loadStats();
 loadPage(0);

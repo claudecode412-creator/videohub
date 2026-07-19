@@ -29,12 +29,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests(auth -> auth
-                // --- Public: the site itself + its assets ---
+                // --- Public: the site itself + its assets + viewer auth pages ---
                 .requestMatchers(HttpMethod.GET,
-                        "/", "/index.html", "/css/**", "/js/**", "/favicon.ico", "/error").permitAll()
+                        "/", "/index.html", "/css/**", "/js/**", "/favicon.ico", "/error",
+                        "/login", "/signup").permitAll()
                 // --- Public: read-only video API ---
                 .requestMatchers(HttpMethod.GET,
                         "/api/videos", "/api/videos/stats", "/api/videos/*", "/api/videos/*/stream").permitAll()
+                // --- Public: viewer accounts (sign up / log in / log out / who am I) ---
+                .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/logout").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/auth/me").permitAll()
                 // --- Public: viewers can record a view or toggle a like ---
                 .requestMatchers(HttpMethod.POST, "/api/videos/*/view", "/api/videos/*/like").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/videos/*/like").permitAll()
