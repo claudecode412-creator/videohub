@@ -93,12 +93,80 @@ function manageRow(v) {
     meta.textContent = `${plural(v.views, 'view')}  •  ${plural(v.likes, 'like')}  •  ${formatBytes(v.sizeBytes)}  •  ${timeAgo(v.uploadedAt)}`;
     info.append(title, meta);
 
+    const actions = el('div', 'manage-actions');
+
+    const edit = el('button', 'btn btn-ghost');
+    edit.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L18.5 9.5a2.12 2.12 0 00-3-3L5 17v3z"/></svg> Edit';
+    edit.addEventListener('click', () => toggleEditor(v, row, title));
+
     const del = el('button', 'btn btn-danger-ghost');
     del.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v12a2 2 0 01-2 2H8a2 2 0 01-2-2V7"/></svg> Delete';
     del.addEventListener('click', () => deleteVideo(v.id, row));
 
-    row.append(thumb, info, del);
+    actions.append(edit, del);
+    row.append(thumb, info, actions);
     return row;
+}
+
+/* ---------- inline edit (title + description) ---------- */
+function toggleEditor(v, row, titleEl) {
+    const open = row.querySelector('.manage-edit');
+    if (open) { open.remove(); return; } // second click closes it
+
+    const editor = el('div', 'manage-edit');
+
+    const titleField = el('label', 'field');
+    titleField.innerHTML = '<span>Title</span>';
+    const titleInput = el('input');
+    titleInput.type = 'text';
+    titleInput.value = v.title || '';
+    titleField.appendChild(titleInput);
+
+    const descField = el('label', 'field');
+    descField.innerHTML = '<span>Description</span>';
+    const descInput = el('textarea');
+    descInput.rows = 3;
+    descInput.placeholder = "What's this video about?";
+    descInput.value = v.description || '';
+    descField.appendChild(descInput);
+
+    const editActions = el('div', 'edit-actions');
+    const cancel = el('button', 'btn btn-ghost');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => editor.remove());
+    const save = el('button', 'btn btn-primary');
+    save.textContent = 'Save changes';
+    save.addEventListener('click', () => saveEdit(v, row, titleEl, titleInput, descInput, save));
+
+    editActions.append(cancel, save);
+    editor.append(titleField, descField, editActions);
+    row.appendChild(editor);
+    titleInput.focus();
+}
+
+async function saveEdit(v, row, titleEl, titleInput, descInput, saveBtn) {
+    const title = titleInput.value.trim();
+    if (!title) { toast('Title cannot be empty', 'err'); titleInput.focus(); return; }
+    saveBtn.disabled = true;
+    try {
+        const res = await fetch(`${API}/${v.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description: descInput.value.trim() }),
+        });
+        if (res.status === 401 || res.status === 403) { toast('Your session expired — please log in again.', 'err'); return; }
+        if (!res.ok) throw new Error();
+        const updated = await res.json();
+        v.title = updated.title;
+        v.description = updated.description;
+        titleEl.textContent = updated.title || updated.originalFilename || 'Untitled';
+        row.querySelector('.manage-edit')?.remove();
+        toast('Changes saved', 'ok');
+    } catch {
+        toast('Could not save changes', 'err');
+    } finally {
+        saveBtn.disabled = false;
+    }
 }
 
 async function deleteVideo(id, row) {

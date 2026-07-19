@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.example.videohub.dto.StatsResponse;
+import com.example.videohub.dto.UpdateVideoRequest;
 import com.example.videohub.dto.VideoPage;
 import com.example.videohub.dto.VideoResponse;
 import com.example.videohub.model.Video;
@@ -113,6 +116,21 @@ public class VideoController {
     @GetMapping("/{id}")
     public VideoResponse get(@PathVariable Long id) {
         return VideoResponse.from(find(id));
+    }
+
+    /**
+     * Edit a video's title and/or description (admin only). A blank title is
+     * ignored so a video can never end up nameless; the description can be
+     * cleared by sending an empty value.
+     */
+    @PutMapping("/{id}")
+    public VideoResponse update(@PathVariable Long id, @RequestBody UpdateVideoRequest req) {
+        Video video = find(id);
+        if (req.title() != null && !req.title().isBlank()) {
+            video.setTitle(req.title().trim());
+        }
+        video.setDescription(req.description() != null ? req.description().trim() : null);
+        return VideoResponse.from(repository.save(video));
     }
 
     /** Record a view (called when the player opens) and return the new count. */
