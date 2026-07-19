@@ -2,6 +2,8 @@ package com.example.videohub.controller;
 
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +31,8 @@ import jakarta.servlet.http.HttpSession;
 @RestController
 @RequestMapping("/api/subscription")
 public class SubscriptionController {
+
+    private static final Logger log = LoggerFactory.getLogger(SubscriptionController.class);
 
     @Value("${app.pass.price-minor:9900}")
     private long priceMinor;
@@ -104,8 +108,11 @@ public class SubscriptionController {
             Session checkout = Session.create(params);
             return ResponseEntity.ok(Map.of("url", checkout.getUrl()));
         } catch (Exception e) {
+            // Log the real cause (e.g. an unsupported currency) instead of hiding it.
+            log.error("Stripe checkout failed for user {} ({} {})", uid, priceMinor, currency, e);
+            String reason = e.getMessage() == null ? "unknown error" : e.getMessage();
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(Map.of("error", "Could not start checkout. Please try again."));
+                    .body(Map.of("error", "Could not start checkout: " + reason));
         }
     }
 }
