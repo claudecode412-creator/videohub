@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin · VideoHub</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='22' width='100' height='100' fill='%238b5cf6'/><path d='M40 32 L70 50 L40 68 Z' fill='white'/></svg>">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <header class="nav">
+        <div class="nav-inner">
+            <a class="brand" href="/admin">
+                <span class="brand-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+                </span>
+                <span class="brand-name">Video<span class="grad">Hub</span> <span class="admin-tag">Admin</span></span>
+            </a>
+            <div class="nav-spacer"></div>
+            <a class="btn btn-ghost" href="/" target="_blank" rel="noopener">View site ↗</a>
+            <form method="post" action="/admin/logout" style="margin:0">
+                <button class="btn btn-ghost" type="submit">Log out</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="container admin-container">
+        <!-- Upload -->
+        <section class="admin-panel">
+            <h2 class="admin-h2">Upload videos</h2>
+            <label class="dropzone" id="dropzone" for="fileInput">
+                <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                          d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                </svg>
+                <div class="dropzone-text">
+                    <strong>Drag &amp; drop videos here</strong>
+                    <span>or click to browse — pick as many as you want</span>
+                </div>
+                <input id="fileInput" type="file" accept="video/*" multiple hidden>
+            </label>
+
+            <div class="upload-fields">
+                <label class="field">
+                    <span>Title <em>(optional — used only for a single upload; batches use filenames)</em></span>
+                    <input id="uploadTitleInput" type="text" placeholder="My video">
+                </label>
+                <label class="field">
+                    <span>Description <em>(optional)</em></span>
+                    <textarea id="uploadDescInput" rows="2" placeholder="What's this video about?"></textarea>
+                </label>
+            </div>
+
+            <ul class="upload-list" id="uploadList"></ul>
+
+            <div class="admin-actions">
+                <span class="upload-summary" id="uploadSummary"></span>
+                <button class="btn btn-primary" id="startUpload" disabled>Upload</button>
+            </div>
+        </section>
+
+        <!-- Manage -->
+        <section class="admin-panel">
+            <div class="section-head">
+                <h2 class="admin-h2">Manage videos</h2>
+                <span class="section-count" id="manageCount"></span>
+            </div>
+            <div id="manageList" class="manage-list"></div>
+            <div class="list-status" id="manageStatus"></div>
+            <div class="admin-actions center">
+                <button class="btn btn-ghost" id="loadMore" hidden>Load more</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/js/admin.js"></script>
+</body>
+</html>

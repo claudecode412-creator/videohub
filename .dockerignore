@@ -1,0 +1,8 @@
+target/
+uploads/
+data/
+.git/
+.claude/
+.idea/
+*.iml
+.DS_Store
