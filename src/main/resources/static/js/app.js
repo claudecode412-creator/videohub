@@ -104,7 +104,8 @@ const thumbObserver = new IntersectionObserver((entries) => {
 function createCard(v) {
     const card = el('div', 'card');
     card.dataset.id = v.id;
-    card.addEventListener('click', () => openWatch(v));
+    // Locked (premium & not subscribed) cards send the viewer to the subscribe page.
+    card.addEventListener('click', () => { if (v.locked) window.location.href = '/subscribe'; else openWatch(v); });
 
     const thumb = el('div', 'thumb');
     const fallback = el('div', 'thumb-fallback');
@@ -115,11 +116,18 @@ function createCard(v) {
     vid.muted = true; vid.playsInline = true; vid.preload = 'none';
     vid.dataset.src = v.streamUrl;
     thumb.appendChild(vid);
-    thumbObserver.observe(vid);
+    if (!v.locked) thumbObserver.observe(vid); // a locked video can't be streamed for a preview
 
-    const play = el('div', 'play-badge');
-    play.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
-    thumb.appendChild(play);
+    if (v.locked) {
+        card.classList.add('locked');
+        const lock = el('div', 'lock-badge');
+        lock.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M6 10V7a6 6 0 1112 0v3M5 10h14v10H5z"/></svg> Premium';
+        thumb.appendChild(lock);
+    } else {
+        const play = el('div', 'play-badge');
+        play.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+        thumb.appendChild(play);
+    }
 
     const dur = formatDuration(v.durationSeconds);
     if (dur) { const b = el('span', 'duration-badge'); b.textContent = dur; thumb.appendChild(b); }
@@ -378,13 +386,23 @@ async function renderAuth() {
         box.innerHTML = '';
         if (res.ok) {
             const u = await res.json();
+            // Show membership status: a "Member" badge, or a "Subscribe" button.
+            let sub = null;
+            try { const s = await fetch('/api/subscription/me'); if (s.ok) sub = await s.json(); } catch { /* ignore */ }
+            if (sub && sub.active) {
+                const member = el('span', 'nav-member'); member.textContent = '★ Member';
+                box.append(member);
+            } else {
+                const subscribe = el('a', 'btn btn-primary'); subscribe.href = '/subscribe'; subscribe.textContent = 'Subscribe';
+                box.append(subscribe);
+            }
             const hi = el('span', 'nav-user');
             hi.textContent = u.displayName || u.email;
             const out = el('button', 'btn btn-ghost');
             out.textContent = 'Log out';
             out.addEventListener('click', async () => {
                 try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
-                renderAuth();
+                window.location.reload();
             });
             box.append(hi, out);
         } else {
@@ -396,6 +414,10 @@ async function renderAuth() {
 }
 
 /* ---------- boot ---------- */
+if (new URLSearchParams(window.location.search).get('subscribed') === '1') {
+    toast('🎉 You are now a member — enjoy all videos!', 'ok');
+    window.history.replaceState({}, '', '/');
+}
 renderAuth();
 loadStats();
 loadPage(0);

@@ -19,4 +19,9 @@ public class AuthViewController {
     public String login() {
         return "signin"; // -> templates/signin.html
     }
+
+    @GetMapping("/subscribe")
+    public String subscribe() {
+        return "subscribe"; // -> templates/subscribe.html
+    }
 }

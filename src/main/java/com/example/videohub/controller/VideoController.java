@@ -36,7 +36,10 @@ import com.example.videohub.dto.VideoPage;
 import com.example.videohub.dto.VideoResponse;
 import com.example.videohub.model.Video;
 import com.example.videohub.repository.VideoRepository;
+import com.example.videohub.service.AccessService;
 import com.example.videohub.service.VideoStorageService;
+
+import jakarta.servlet.http.HttpSession;
 
 @RestController
 @RequestMapping("/api/videos")
@@ -50,10 +53,12 @@ public class VideoController {
 
     private final VideoRepository repository;
     private final VideoStorageService storage;
+    private final AccessService access;
 
-    public VideoController(VideoRepository repository, VideoStorageService storage) {
+    public VideoController(VideoRepository repository, VideoStorageService storage, AccessService access) {
         this.repository = repository;
         this.storage = storage;
+        this.access = access;
     }
 
     /** Upload a new video (multipart form: file + optional title/description/duration). */
@@ -89,7 +94,8 @@ public class VideoController {
     public VideoPage list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "24") int size,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            HttpSession session) {
 
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(Math.max(page, 0), safeSize);
@@ -98,8 +104,10 @@ public class VideoController {
                 ? repository.findAllByOrderByUploadedAtDesc(pageable)
                 : repository.findByTitleContainingIgnoreCaseOrderByUploadedAtDesc(search.trim(), pageable);
 
+        // A premium video is "locked" unless this viewer can watch it.
+        boolean canWatchPremium = access.isAdmin() || access.viewerHasActiveAccess(session);
         List<VideoResponse> content = result.getContent().stream()
-                .map(VideoResponse::from)
+                .map(v -> VideoResponse.from(v, v.isPremium() && !canWatchPremium))
                 .toList();
 
         return new VideoPage(content, result.getNumber(), result.getSize(),
@@ -114,8 +122,9 @@ public class VideoController {
 
     /** Metadata for a single video. */
     @GetMapping("/{id}")
-    public VideoResponse get(@PathVariable Long id) {
-        return VideoResponse.from(find(id));
+    public VideoResponse get(@PathVariable Long id, HttpSession session) {
+        Video video = find(id);
+        return VideoResponse.from(video, video.isPremium() && !access.canWatch(video, session));
     }
 
     /**
@@ -130,6 +139,9 @@ public class VideoController {
             video.setTitle(req.title().trim());
         }
         video.setDescription(req.description() != null ? req.description().trim() : null);
+        if (req.premium() != null) {
+            video.setPremium(req.premium());
+        }
         return VideoResponse.from(repository.save(video));
     }
 
@@ -165,9 +177,15 @@ public class VideoController {
     @GetMapping("/{id}/stream")
     public ResponseEntity<ResourceRegion> stream(
             @PathVariable Long id,
-            @RequestHeader HttpHeaders headers) throws IOException {
+            @RequestHeader HttpHeaders headers,
+            HttpSession session) throws IOException {
 
         Video video = find(id);
+
+        // Premium videos are only streamable by the admin or an active subscriber.
+        if (!access.canWatch(video, session)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This video requires a subscription.");
+        }
 
         // When videos live in R2, hand the browser a redirect to the public R2
         // URL so R2 streams the bytes directly (byte-range support, no egress cost).

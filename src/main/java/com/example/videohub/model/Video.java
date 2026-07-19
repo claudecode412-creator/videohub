@@ -43,6 +43,13 @@ public class Video {
     /** Length of the video in seconds, captured in the browser at upload time (may be null). */
     private Double durationSeconds;
 
+    /**
+     * When true, only viewers with an active subscription pass can watch this
+     * video. Nullable on purpose: existing rows predate this column, and a
+     * missing value simply means "not premium".
+     */
+    private Boolean premium;
+
     /** How many times the video has been opened in the player. */
     private long views;
 
@@ -113,6 +120,15 @@ public class Video {
 
     public void setDurationSeconds(Double durationSeconds) {
         this.durationSeconds = durationSeconds;
+    }
+
+    /** Null-safe: a missing value means the video is free. */
+    public boolean isPremium() {
+        return premium != null && premium;
+    }
+
+    public void setPremium(Boolean premium) {
+        this.premium = premium;
     }
 
     public long getViews() {

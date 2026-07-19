@@ -34,6 +34,12 @@ public class User {
 
     private Instant createdAt;
 
+    /**
+     * When this viewer's subscription pass expires. If it's in the future, the
+     * viewer can watch premium videos. {@code null} means never subscribed.
+     */
+    private Instant accessUntil;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -48,4 +54,12 @@ public class User {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public Instant getAccessUntil() { return accessUntil; }
+    public void setAccessUntil(Instant accessUntil) { this.accessUntil = accessUntil; }
+
+    /** True when this viewer currently has an active subscription pass. */
+    public boolean hasActiveAccess() {
+        return accessUntil != null && accessUntil.isAfter(Instant.now());
+    }
 }

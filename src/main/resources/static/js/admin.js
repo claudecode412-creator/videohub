@@ -91,7 +91,10 @@ function manageRow(v) {
     const meta = el('div', 'manage-meta');
     const plural = (n, word) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
     meta.textContent = `${plural(v.views, 'view')}  •  ${plural(v.likes, 'like')}  •  ${formatBytes(v.sizeBytes)}  •  ${timeAgo(v.uploadedAt)}`;
-    info.append(title, meta);
+    const premiumBadge = el('span', 'premium-badge');
+    premiumBadge.textContent = '★ Premium';
+    premiumBadge.hidden = !v.premium;
+    info.append(title, meta, premiumBadge);
 
     const actions = el('div', 'manage-actions');
 
@@ -130,21 +133,29 @@ function toggleEditor(v, row, titleEl) {
     descInput.value = v.description || '';
     descField.appendChild(descInput);
 
+    const premiumField = el('label', 'edit-check');
+    const premiumInput = el('input');
+    premiumInput.type = 'checkbox';
+    premiumInput.checked = !!v.premium;
+    const premiumLabel = el('span');
+    premiumLabel.textContent = 'Premium — only subscribers can watch';
+    premiumField.append(premiumInput, premiumLabel);
+
     const editActions = el('div', 'edit-actions');
     const cancel = el('button', 'btn btn-ghost');
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => editor.remove());
     const save = el('button', 'btn btn-primary');
     save.textContent = 'Save changes';
-    save.addEventListener('click', () => saveEdit(v, row, titleEl, titleInput, descInput, save));
+    save.addEventListener('click', () => saveEdit(v, row, titleEl, titleInput, descInput, premiumInput, save));
 
     editActions.append(cancel, save);
-    editor.append(titleField, descField, editActions);
+    editor.append(titleField, descField, premiumField, editActions);
     row.appendChild(editor);
     titleInput.focus();
 }
 
-async function saveEdit(v, row, titleEl, titleInput, descInput, saveBtn) {
+async function saveEdit(v, row, titleEl, titleInput, descInput, premiumInput, saveBtn) {
     const title = titleInput.value.trim();
     if (!title) { toast('Title cannot be empty', 'err'); titleInput.focus(); return; }
     saveBtn.disabled = true;
@@ -152,14 +163,17 @@ async function saveEdit(v, row, titleEl, titleInput, descInput, saveBtn) {
         const res = await fetch(`${API}/${v.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description: descInput.value.trim() }),
+            body: JSON.stringify({ title, description: descInput.value.trim(), premium: premiumInput.checked }),
         });
         if (res.status === 401 || res.status === 403) { toast('Your session expired — please log in again.', 'err'); return; }
         if (!res.ok) throw new Error();
         const updated = await res.json();
         v.title = updated.title;
         v.description = updated.description;
+        v.premium = updated.premium;
         titleEl.textContent = updated.title || updated.originalFilename || 'Untitled';
+        const badge = row.querySelector('.premium-badge');
+        if (badge) badge.hidden = !updated.premium;
         row.querySelector('.manage-edit')?.remove();
         toast('Changes saved', 'ok');
     } catch {

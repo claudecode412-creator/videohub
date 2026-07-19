@@ -7,6 +7,9 @@ import com.example.videohub.model.Video;
 /**
  * What the API sends back to clients. We never expose the on-disk stored
  * filename; clients only get a stream URL to play the video.
+ *
+ * <p>{@code premium} says the video needs a subscription; {@code locked} says
+ * <em>this</em> viewer can't watch it yet (premium and not subscribed).
  */
 public record VideoResponse(
         Long id,
@@ -19,9 +22,15 @@ public record VideoResponse(
         long views,
         long likes,
         Instant uploadedAt,
+        boolean premium,
+        boolean locked,
         String streamUrl) {
 
     public static VideoResponse from(Video v) {
+        return from(v, false);
+    }
+
+    public static VideoResponse from(Video v, boolean locked) {
         return new VideoResponse(
                 v.getId(),
                 v.getTitle(),
@@ -33,6 +42,8 @@ public record VideoResponse(
                 v.getViews(),
                 v.getLikes(),
                 v.getUploadedAt(),
+                v.isPremium(),
+                locked,
                 "/api/videos/" + v.getId() + "/stream");
     }
 }
