@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -23,11 +22,14 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 /**
@@ -79,11 +81,12 @@ public class VideoStorageService {
 
     @PostConstruct
     public void init() {
+        // The public URL is no longer required — the app streams from R2's
+        // private API, so it works even if the r2.dev public URL is disabled.
         this.useR2 = StringUtils.hasText(r2Bucket)
                 && StringUtils.hasText(r2Endpoint)
                 && StringUtils.hasText(r2AccessKey)
-                && StringUtils.hasText(r2SecretKey)
-                && StringUtils.hasText(r2PublicBaseUrl);
+                && StringUtils.hasText(r2SecretKey);
 
         if (useR2) {
             this.s3 = S3Client.builder()
@@ -176,15 +179,19 @@ public class VideoStorageService {
     }
 
     /**
-     * When videos live in R2, returns the public URL to redirect the browser to
-     * (so R2 streams the bytes directly, with byte-range support, at no egress
-     * cost). Returns empty when using local disk — the app streams those itself.
+     * Opens a video stored in R2 for streaming through the app. The browser's
+     * {@code Range} header (if any) is passed straight to R2, so seeking still
+     * works — R2 returns just the requested byte range. The caller must close
+     * the returned stream (Spring does this after writing the response).
      */
-    public Optional<String> redirectUrl(String storedFilename) {
-        if (!useR2) {
-            return Optional.empty();
+    public ResponseInputStream<GetObjectResponse> openR2Stream(String storedFilename, String rangeHeader) {
+        GetObjectRequest.Builder request = GetObjectRequest.builder()
+                .bucket(r2Bucket)
+                .key(storedFilename);
+        if (StringUtils.hasText(rangeHeader)) {
+            request.range(rangeHeader);
         }
-        return Optional.of(r2PublicBaseUrl + "/" + storedFilename);
+        return s3.getObject(request.build());
     }
 
     /**

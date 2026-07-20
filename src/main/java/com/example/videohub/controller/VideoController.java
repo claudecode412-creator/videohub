@@ -1,13 +1,13 @@
 package com.example.videohub.controller;
 
 import java.io.IOException;
-import java.net.URI;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -40,6 +40,8 @@ import com.example.videohub.service.AccessService;
 import com.example.videohub.service.VideoStorageService;
 
 import jakarta.servlet.http.HttpSession;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
 @RestController
 @RequestMapping("/api/videos")
@@ -175,7 +177,7 @@ public class VideoController {
      * whole file up front.
      */
     @GetMapping("/{id}/stream")
-    public ResponseEntity<ResourceRegion> stream(
+    public ResponseEntity<?> stream(
             @PathVariable Long id,
             @RequestHeader HttpHeaders headers,
             HttpSession session) throws IOException {
@@ -187,43 +189,60 @@ public class VideoController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This video requires a subscription.");
         }
 
-        // When videos live in R2, hand the browser a redirect to the public R2
-        // URL so R2 streams the bytes directly (byte-range support, no egress cost).
-        Optional<String> redirect = storage.redirectUrl(video.getStoredFilename());
-        if (redirect.isPresent()) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(redirect.get()))
-                    .build();
+        // Cloud (R2): the app fetches the bytes from R2's private API and streams
+        // them to the viewer, passing the browser's byte-range straight through
+        // so seeking still works. No dependency on the public r2.dev URL.
+        if (storage.isRemote()) {
+            String rangeHeader = headers.getFirst(HttpHeaders.RANGE);
+            ResponseInputStream<GetObjectResponse> r2 = storage.openR2Stream(video.getStoredFilename(), rangeHeader);
+            GetObjectResponse meta = r2.response();
+
+            HttpHeaders out = new HttpHeaders();
+            out.add(HttpHeaders.ACCEPT_RANGES, "bytes");
+            out.setContentType(safeMediaType(meta.contentType() != null ? meta.contentType() : video.getContentType()));
+            if (meta.contentLength() != null) {
+                out.setContentLength(meta.contentLength());
+            }
+            boolean partial = meta.contentRange() != null;
+            if (partial) {
+                out.add(HttpHeaders.CONTENT_RANGE, meta.contentRange());
+            }
+            return new ResponseEntity<>(new InputStreamResource(r2), out,
+                    partial ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
         }
 
+        // Local disk (dev mode): serve the file, honouring a byte-range request.
         UrlResource resource = storage.loadAsResource(video.getStoredFilename());
         long contentLength = resource.contentLength();
-
-        List<HttpRange> ranges = headers.getRange();
-        ResourceRegion region;
-        HttpStatus status;
-
-        if (ranges.isEmpty()) {
-            // No Range header: hand back the whole file (e.g. a direct download).
-            region = new ResourceRegion(resource, 0, contentLength);
-            status = HttpStatus.OK;
-        } else {
-            // Serve one bounded chunk starting at the requested offset.
-            HttpRange range = ranges.get(0);
-            long start = range.getRangeStart(contentLength);
-            long end = range.getRangeEnd(contentLength);
-            long length = Math.min(CHUNK_SIZE, end - start + 1);
-            region = new ResourceRegion(resource, start, length);
-            status = HttpStatus.PARTIAL_CONTENT;
-        }
-
         MediaType mediaType = MediaTypeFactory.getMediaType(resource)
                 .orElseGet(() -> safeMediaType(video.getContentType()));
 
-        return ResponseEntity.status(status)
-                .contentType(mediaType)
-                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                .body(region);
+        HttpHeaders out = new HttpHeaders();
+        out.add(HttpHeaders.ACCEPT_RANGES, "bytes");
+        out.setContentType(mediaType);
+
+        List<HttpRange> ranges = headers.getRange();
+        if (ranges.isEmpty()) {
+            out.setContentLength(contentLength);
+            return new ResponseEntity<>(new InputStreamResource(resource.getInputStream()), out, HttpStatus.OK);
+        }
+
+        // One bounded chunk starting at the requested offset (keeps memory small).
+        HttpRange range = ranges.get(0);
+        long start = range.getRangeStart(contentLength);
+        long end = Math.min(range.getRangeEnd(contentLength), start + CHUNK_SIZE - 1);
+        int length = (int) (end - start + 1);
+        byte[] chunk = new byte[length];
+        try (InputStream in = resource.getInputStream()) {
+            in.skipNBytes(start);
+            int read = in.readNBytes(chunk, 0, length);
+            if (read < length) {
+                chunk = java.util.Arrays.copyOf(chunk, read);
+            }
+        }
+        out.setContentLength(chunk.length);
+        out.add(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + (start + chunk.length - 1) + "/" + contentLength);
+        return new ResponseEntity<>(new ByteArrayResource(chunk), out, HttpStatus.PARTIAL_CONTENT);
     }
 
     /** Delete a video's metadata and its file on disk. */
